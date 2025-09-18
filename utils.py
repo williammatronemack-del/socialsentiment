@@ -47,3 +47,4 @@ def fetch_eodhd_news_sentiment(ticker, api_key):
     data = r.json()
     headlines = [a["title"] for a in data]
     return vader_score(headlines)
+
