@@ -1,58 +1,65 @@
-import os
-from flask import Flask, request, jsonify
-from utils import (
-    fetch_reddit_sentiment,
-    fetch_stocktwits_sentiment,
-    fetch_eodhd_news_sentiment,
-    build_time_series
-)
-
-app = Flask(__name__)
-
-EODHD_API_KEY = os.getenv("EODHD_API_KEY", "")
-REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")
-REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
-REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "mackresearch-sentiment/0.1")
-
-@app.route("/")
-def home():
-    return {"status": "ok", "service": "sentiment-api"}
-
-@app.route("/sentiment/reddit")
-def reddit_sentiment():
-    ticker = request.args.get("ticker", "NVDA")
-    score = fetch_reddit_sentiment(
-        ticker,
-        REDDIT_CLIENT_ID,
-        REDDIT_CLIENT_SECRET,
-        REDDIT_USER_AGENT
-    )
-    return jsonify({"ticker": ticker, "source": "reddit", "score": score})
-
-@app.route("/sentiment/stocktwits")
-def stocktwits_sentiment():
-    ticker = request.args.get("ticker", "NVDA")
-    score = fetch_stocktwits_sentiment(ticker)
-    return jsonify({"ticker": ticker, "source": "stocktwits", "score": score})
-
-@app.route("/sentiment/news")
-def news_sentiment():
-    ticker = request.args.get("ticker", "NVDA")
-    score = fetch_eodhd_news_sentiment(ticker, EODHD_API_KEY)
-    return jsonify({"ticker": ticker, "source": "news", "score": score})
+from datetime import datetime, timedelta
 
 @app.route("/sentiment/timeseries")
 def sentiment_timeseries():
     ticker = request.args.get("ticker", "NVDA")
-    # Dummy example for time series
-    dummy_data = [
-        {"date": "2025-01-01", "score": 6.0},
-        {"date": "2025-01-03", "score": 7.0},
-        {"date": "2025-01-10", "score": 4.0},
-        {"date": "2025-01-15", "score": 8.0},
-    ]
-    series = build_time_series(dummy_data)
-    return jsonify({"ticker": ticker, "time_series": series})
+    period = request.args.get("period", "12w")  # default lookback is 12 weeks
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    # --- translate `period` into days ---
+    now = datetime.utcnow()
+    if period.endswith("w"):
+        days = int(period[:-1]) * 7
+    elif period.endswith("m"):
+        days = int(period[:-1]) * 30
+    elif period.endswith("y"):
+        days = int(period[:-1]) * 365
+    else:
+        days = 90  # fallback (approx. 3 months)
+
+    start_date = now - timedelta(days=days)
+
+    # --- fetch news from EODHD ---
+    url = (
+        f"https://eodhd.com/api/news?"
+        f"s={ticker}&api_token={EODHD_API_KEY}"
+        f"&from={start_date.date()}&to={now.date()}&fmt=json"
+    )
+    r = requests.get(url)
+    if r.status_code != 200:
+        return jsonify({"error": "failed to fetch news", "status": r.status_code})
+
+    try:
+        articles = r.json()
+    except Exception:
+        return jsonify({"error": "failed to parse EODHD response"})
+
+    if not articles:
+        return jsonify({"ticker": ticker, "period": period, "time_series": {"date": [], "avg_score": []}})
+
+    # --- bucket articles by week starting Monday ---
+    buckets = {}
+    for a in articles:
+        try:
+            pub = datetime.strptime(a["date"], "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            continue
+        week_start = pub - timedelta(days=pub.weekday())
+        week_key = week_start.strftime("%Y-%m-%d")
+        buckets.setdefault(week_key, []).append(a["title"])
+
+    # --- score each week ---
+    dates, scores = [], []
+    for week in sorted(buckets.keys()):
+        avg_score = vader_score(buckets[week])
+        dates.append(week)
+        scores.append(avg_score)
+
+    return jsonify({
+        "ticker": ticker,
+        "period": period,
+        "time_series": {
+            "date": dates,
+            "avg_score": scores
+        }
+    })
+
