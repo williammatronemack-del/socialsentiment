@@ -1,0 +1,5 @@
+flask
+requests
+vaderSentiment
+praw
+gunicorn
