@@ -7,11 +7,15 @@ import os
 import praw
 import nltk
 
-# Ensure VADER lexicon is available
+# Ensure VADER lexicon is available in project-local nltk_data folder
+nltk_data_path = os.path.join(os.path.dirname(__file__), "nltk_data")
+os.makedirs(nltk_data_path, exist_ok=True)
+nltk.data.path.append(nltk_data_path)
+
 try:
     from nltk.sentiment.vader import SentimentIntensityAnalyzer
 except LookupError:
-    nltk.download('vader_lexicon')
+    nltk.download("vader_lexicon", download_dir=nltk_data_path)
     from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
 app = Flask(__name__)
@@ -95,3 +99,5 @@ def home():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
+
