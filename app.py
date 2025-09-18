@@ -1,15 +1,24 @@
 from flask import Flask, request, jsonify
-from utils import fetch_eodhd_news_sentiment, fetch_eodhd_news_timeseries
+from utils import (
+    fetch_eodhd_news_sentiment,
+    fetch_eodhd_news_timeseries,
+    fetch_reddit_sentiment,
+    fetch_reddit_timeseries
+)
 import os
 
 app = Flask(__name__)
 
 EODHD_API_KEY = os.getenv("EODHD_API_KEY", "")
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID", "")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET", "")
+REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT", "mackresearch-sentiment/0.1")
 
 @app.route("/")
 def home():
     return "✅ Social Sentiment API is running"
 
+# ---------- NEWS ----------
 @app.route("/sentiment/news")
 def news_sentiment():
     ticker = request.args.get("ticker")
@@ -26,6 +35,34 @@ def news_timeseries():
     ts = fetch_eodhd_news_timeseries(ticker, EODHD_API_KEY)
     return jsonify({"ticker": ticker, "time_series": ts})
 
+# ---------- REDDIT ----------
+@app.route("/sentiment/reddit")
+def reddit_sentiment():
+    ticker = request.args.get("ticker")
+    if not ticker:
+        return jsonify({"error": "ticker required"}), 400
+    score = fetch_reddit_sentiment(
+        ticker,
+        REDDIT_CLIENT_ID,
+        REDDIT_CLIENT_SECRET,
+        REDDIT_USER_AGENT
+    )
+    return jsonify({"ticker": ticker, "score": score})
+
+@app.route("/sentiment/reddit/timeseries")
+def reddit_timeseries():
+    ticker = request.args.get("ticker")
+    if not ticker:
+        return jsonify({"error": "ticker required"}), 400
+    ts = fetch_reddit_timeseries(
+        ticker,
+        REDDIT_CLIENT_ID,
+        REDDIT_CLIENT_SECRET,
+        REDDIT_USER_AGENT
+    )
+    return jsonify({"ticker": ticker, "time_series": ts})
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
+
 
