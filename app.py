@@ -12,11 +12,14 @@ nltk_data_path = os.path.join(os.path.dirname(__file__), "nltk_data")
 os.makedirs(nltk_data_path, exist_ok=True)
 nltk.data.path.append(nltk_data_path)
 
-try:
-    from nltk.sentiment.vader import SentimentIntensityAnalyzer
-except LookupError:
-    nltk.download("vader_lexicon", download_dir=nltk_data_path)
-    from nltk.sentiment.vader import SentimentIntensityAnalyzer
+def get_analyzer():
+    try:
+        from nltk.sentiment.vader import SentimentIntensityAnalyzer
+        return SentimentIntensityAnalyzer()
+    except LookupError:
+        nltk.download("vader_lexicon", download_dir=nltk_data_path)
+        from nltk.sentiment.vader import SentimentIntensityAnalyzer
+        return SentimentIntensityAnalyzer()
 
 app = Flask(__name__)
 CORS(app)
@@ -28,7 +31,7 @@ reddit = praw.Reddit(
     user_agent=os.environ.get("REDDIT_USER_AGENT", "social-sentiment-app")
 )
 
-analyzer = SentimentIntensityAnalyzer()
+analyzer = get_analyzer()
 
 FIXED_SUBS = ["stocks", "wallstreetbets", "investing"]
 
@@ -98,6 +101,9 @@ def home():
     return "Social Sentiment API – Reddit + News VADER weekly averages (6M)"
 
 if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
+
+
     app.run(host="0.0.0.0", port=5000)
 
 
